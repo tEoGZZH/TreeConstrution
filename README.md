@@ -10,7 +10,7 @@
 - Training sense embeddings from [WSD-biencoder](https://github.com/facebookresearch/wsd-biencoders)
 - Output data used for generating [nball dartboard](https://github.com/gnodisnait/bp94nball/)
 
-## How to run
+### How to run
 - Download sense embeddings [here](https://drive.google.com/file/d/1JwBuTPBP6Qxc5tt7cQH1SOaFQ7M4jgmO/view?usp=drive_link)
 - run
 ```
