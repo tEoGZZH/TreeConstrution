@@ -1,35 +1,16 @@
 import networkx as nx
 import numpy as np
 
-def bfs_double_checking(tree):
-    # Initialize the tree
-    print("Using bfs double checking")
-    new_tree = nx.DiGraph()
-    queue = []
-    done = []
-    # BFS the graph tp get the bfs tree
-    queue.append("*root*")
-    done.append("*root*")
-    while queue:
-        n = queue.pop(0)
-        subnodes = tree.successors(n)
-        for subnode in subnodes:
-            if subnode not in done:
-                queue.append(subnode)
-                new_tree.add_node(subnode, sense=tree.nodes[subnode]["sense"])
-                new_tree.add_edge(n, subnode)
-                done.append(subnode)
-    if not nx.is_tree(new_tree):
-        print("Some problem caused double checking, not tree here")
-    print(nx.number_of_nodes(new_tree), " Nodes has been checked")
-    return new_tree
-
 
 def add_embedding(embeddings, trees):
-    new_tree = bfs_double_checking(nx.compose_all(trees))
+    # Compose tree
+    print("Composing trees......")
+    new_tree = nx.compose_all(trees)
+    print("Composing finished")
+    # Add embedding for the nodes
     for node in new_tree.nodes():
         if node in embeddings:
-            strlist_embd = [str(x) for x in np.array(embeddings[node])[:, 0].reshape(1, -1)[0]]
+            strlist_embd = [str(x) for x in np.array(embeddings[node])]
             new_tree.nodes[node]["sense_embedding"] = " ".join(strlist_embd)
             new_tree.nodes[node]["have_embedding"] = True
         else:
@@ -37,54 +18,35 @@ def add_embedding(embeddings, trees):
     return new_tree
 
 
-def delete_nodes_simple(tree):
-    remove_nodes = [n for n in tree.nodes() if tree.nodes[n]["have_embedding"] == False and n != "*root*"]
-    tree.remove_nodes_from(remove_nodes)
-    new_nodes = [n for n in tree.nodes() if tree.in_degree(n) == 0 and n != "*root*"]
-    new_edges = [("*root*", y) for y in new_nodes]
-    tree.add_edges_from(new_edges)
+def delete_nodes(tree, embeddings):
+    # Nodes that do not have embeddings, need to be removed
+    remove_nodes = [n for n in tree.nodes() if
+                    tree.nodes[n]["have_embedding"] is False and n not in ["*root*", "a", "s", "r", "v"]]
 
-    return tree
+    # Check number
+    all_nodes = tree.nodes()
+    have_embedding = [n for n in tree.nodes() if tree.nodes[n]["have_embedding"] is True]
+    print("All nodes here: ", len(all_nodes), "remove here: ", len(remove_nodes), "have embedding here: ",
+          len(have_embedding))
 
-
-def bfs_check_sucs(tree, sucs):
-    for n in sucs:
-        if tree.nodes[n]["have_embedding"]:
-            return True, n
-    # Then check every successors'successor
-    for n in sucs:
-        bfs_check_sucs(tree, tree.successors(n))
-
-    return False, None
-
-
-def delete_nodes(tree):
-    remove_nodes = [n for n in tree.nodes() if tree.nodes[n]["have_embedding"] == False and n != "*root*"]
-    pre_dic = dict(nx.bfs_predecessors(tree, "*root*"))
+    # Remove the nodes
     for n in remove_nodes:
-        have_pre = False
-        pre = pre_dic[n]
-        while pre is not None:
-            if tree.nodes[pre]["have_embedding"]:
-                have_pre = True
-                break
-            else:
-                if pre == "*root*":
-                    pre = None
-                else:
-                    pre = pre_dic[pre]
-        have_suc, suc = bfs_check_sucs(tree, tree.successors(n))
-        if have_pre and have_suc:
-            if not tree.has_edge(pre, suc):
-                tree.add_edge(pre, suc)
-        elif not have_pre and have_suc:
-            if not tree.has_edge("*root*", suc):
-                tree.add_edge("*root*", suc)
+        pre = list(tree.predecessors(n))[0]
+        sucs = list(tree.successors(n))
+        tree.add_edges_from([(pre, suc) for suc in sucs])
+        tree.remove_node(n)
 
-    tree.remove_nodes_from(remove_nodes)
-    nodes_left = [n for n in tree.nodes() if tree.in_degree(n) == 0 and n != "*root*"]
-    new_edges = [("*root*", y) for y in nodes_left]
-    tree.add_edges_from(new_edges)
+    print("After remove nodes, is connected?", nx.is_weakly_connected(tree))
+    print("After remove nodes, is tree?", nx.is_tree(tree))
+    # Add embedding for top level words
+    for node in ["a", "s", "r", "v"]:
+        sucs = list(tree.successors(node))
+        ems = []
+        for suc in sucs:
+            ems.append(embeddings[suc])
+        em = np.mean(ems, axis=0).tolist()
+        strlist_embd = [str(x) for x in em]
+        tree.nodes[node]["sense_embedding"] = " ".join(strlist_embd)
 
     return tree
 
@@ -118,22 +80,14 @@ def parent_location(tree):
     return tree
 
 
-def combining_tree(trees, embedding_file):
-    tree_with_embedding = add_embedding(embedding_file, trees)
+def combining_tree(trees, embeddings):
+    print("Start to combine tree")
+    tree_with_embedding = add_embedding(embeddings, trees)
     print("Original nodes from tree: ", len(tree_with_embedding.nodes()))
-    tree_with_delete_node = delete_nodes(tree_with_embedding)
+    tree_with_delete_node = delete_nodes(tree_with_embedding, embeddings)
     tree_with_parent_location = parent_location(tree_with_delete_node)
     if not nx.is_tree(tree_with_parent_location):
         print("Some problem caused. not tree here after combining")
     print("Afterwards nodes from tree: ", len(tree_with_parent_location.nodes()))
-    print("Finish combining the tree")
-    print("Starting saving the file.......")
 
     return tree_with_parent_location
-
-    # Save the file
-    nx.write_gml(tree_with_parent_location, new_tree_file)
-    save_sense_children_file(new_tree_file, children_file)
-    save_sense_embedding(new_tree_file, sense_embedding_file)
-    save_parent_location(new_tree_file, concate_code_file)
-    print("All finished")

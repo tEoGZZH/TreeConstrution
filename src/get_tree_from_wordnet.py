@@ -2,44 +2,50 @@ from nltk.corpus import wordnet as wn
 import networkx as nx
 import matplotlib.pyplot as plt
 
-
-def bfs_from_wordnet(root):
-    # Initialize the tree
-    T = nx.DiGraph()
-    queue = []
-    done = []
-    # Add root to the tree
-    T.add_node("*root*")
-    T.add_node(root, sense=wn.synset(root).definition())
-    T.add_edge("*root*", root)
-    queue.append(root)
-    done.append(root)
-    # BFS the graph tp get the bfs tree
-    while queue:
-        n = queue.pop(0)
-        subnodes = wn.synset(n).hyponyms()
-        for subnode in subnodes:
-            subnode_name = subnode.name()
-            if subnode_name not in done:
-                queue.append(subnode_name)
-                T.add_node(subnode_name, sense=subnode.definition())
-                T.add_edge(n, subnode_name)
-                done.append(subnode_name)
-    if not nx.is_tree(T):
-        print("Some problem caused when extract from wordnet not tree here for ", root)
-    print(nx.number_of_nodes(T), " Nodes from ", root, "has been extracted")
-    return T
-
-
 def draw_graph(G):
     nx.draw_planar(G, with_labels=True, font_weight='bold')
     plt.savefig('fig.png', bbox_inches='tight')
 
 
-def get_tree_from_wordnet(roots):
+def get_path_tree(nodes):
     trees = []
-    for root in roots:
-        print("Start extracting", root)
-        T = bfs_from_wordnet(root)
-        trees.append(T)
+    for node in nodes:
+        tree = nx.DiGraph()
+        # Add root to the tree
+        tree.add_node("*root*")
+        path = max(wn.synset(node).hypernym_paths(), key=len)
+        # Add top level word a, s, r, v for some words
+        top_level_words = ["a", "s", "r", "v"]
+        is_noun = True
+        for top in top_level_words:
+            if "."+top+"." in node:
+                tree.add_node(top)
+                tree.add_edge("*root*", top)
+                top_level_word = top
+                is_noun = False
+                break
+
+        # Add other nodes to the tree
+        for i in range(len(path)):
+            # First node, entity.n.01 for nouns, "a", "s", "r", "v" for others
+            # Add node to the tree
+            tree.add_node(path[i].name(), sense=path[i].definition())
+            if i == 0:
+                if is_noun:
+                    # entity.n.01, add edge to the root
+                    tree.add_edge("*root*", path[i].name())
+                else:
+                    # others, add edge to the top level words
+                    tree.add_edge(top_level_word, path[i].name())
+            else:
+                # Add edges to its predecessor
+                tree.add_edge(path[i-1].name(), path[i].name())
+        trees.append(tree)
+    return trees
+
+
+def get_tree_from_wordnet(nodes):
+    # The trees is the highest hypernym path from the nodes
+    trees = get_path_tree(nodes)
+    print("Finish get tree")
     return trees
